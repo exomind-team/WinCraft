@@ -300,6 +300,7 @@ class LiveSourceNormalizationTests(unittest.TestCase):
         self.assertEqual(record['project_label'], 'SyntheticProject')
         self.assertEqual(record['normalized_status'], 'unknown')
         self.assertEqual(record['last_output_kind'], 'agent_message')
+        self.assertEqual(record['source_updated_at'], '1970-01-01T00:00:00.200000Z')
         self.assertEqual(
             record['summary'],
             'Synthetic Agent reply [凭据已隐藏] [本机路径]',
@@ -352,7 +353,7 @@ class LiveSourceNormalizationTests(unittest.TestCase):
             for node in walk_nodes(app_scene['root'])
             if node['id'] == 'global-source-summary'
         )
-        self.assertIn('status unknown', source_summary)
+        self.assertIn('个状态未知', source_summary)
         serialized = json.dumps(scene, ensure_ascii=False)
         for forbidden in (desktop_id, cli_id, 'C:/Private/', 'synthetic-secret', 'Private note'):
             self.assertNotIn(forbidden, serialized)
@@ -872,7 +873,7 @@ class LocalCodexAppStateTests(unittest.TestCase):
             for node in walk_nodes(app_scene['root'])
             if node['id'] == 'global-source-summary'
         )
-        self.assertIn('status unknown', source_summary)
+        self.assertIn('个状态未知', source_summary)
         serialized = json.dumps(scene, ensure_ascii=False)
         for forbidden in (
             desktop_id,
@@ -1113,7 +1114,7 @@ class LiveSourceFailureTests(unittest.TestCase):
         self.assertIn('进程离线', serialized)
         self.assertIn('CLI 部分可用', serialized)
         self.assertIn('已过期 · 上次成功 31 秒前', serialized)
-        self.assertIn('读取于 5 秒前', serialized)
+        self.assertIn('最近读取：5 秒前', serialized)
         self.assertIn('尚未读取到本机状态', serialized)
         self.assertIn('已过期 · 上次成功 31 秒前', serialized)
         self.assertIn('阻塞', serialized)

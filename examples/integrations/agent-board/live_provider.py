@@ -120,6 +120,7 @@ async def run(args: argparse.Namespace) -> None:
     lease: dict[str, Any] | None = None
     world_deleted = False
     event_task: asyncio.Task[dict[str, Any]] | None = None
+    stop_task: asyncio.Task[str] | None = None
     async with Client(args.runtime, 'python.agent-board.global-overview.live', args.ws_url) as client:
         codex_app_links_enabled = False
         try:
@@ -174,23 +175,29 @@ async def run(args: argparse.Namespace) -> None:
                 )
 
             loop = asyncio.get_running_loop()
+            if args.until_stopped:
+                print('{"event":"agent-activity-ready"}', flush=True)
+                stop_task = asyncio.create_task(asyncio.to_thread(sys.stdin.readline))
             event_task = asyncio.create_task(client.events.get())
-            deadline = loop.time() + args.duration_seconds
+            deadline = None if args.until_stopped else loop.time() + args.duration_seconds
             next_refresh = loop.time() + args.refresh_seconds
 
             while True:
-                remaining = deadline - loop.time()
+                remaining = deadline - loop.time() if deadline is not None else float('inf')
                 if remaining <= 0:
                     break
                 timeout = min(remaining, max(0.0, next_refresh - loop.time()))
+                wait_tasks: set[asyncio.Task[Any]] = {event_task}
+                if stop_task is not None:
+                    wait_tasks.add(stop_task)
                 done, _ = await asyncio.wait(
-                    [event_task],
+                    wait_tasks,
                     timeout=timeout,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
                 if not done:
-                    if loop.time() >= deadline:
+                    if deadline is not None and loop.time() >= deadline:
                         break
                     sequence += 1
                     snapshot = await asyncio.to_thread(
@@ -207,6 +214,9 @@ async def run(args: argparse.Namespace) -> None:
                     )
                     next_refresh = loop.time() + args.refresh_seconds
                     continue
+
+                if stop_task is not None and stop_task in done:
+                    break
 
                 if event_task in done:
                     message = event_task.result()
@@ -233,8 +243,12 @@ async def run(args: argparse.Namespace) -> None:
         finally:
             if event_task is not None and not event_task.done():
                 event_task.cancel()
+            if stop_task is not None and not stop_task.done():
+                stop_task.cancel()
             if world_id is not None and lease is not None and not world_deleted:
                 await cleanup_global_overview_world(client, world_id, lease)
+                if args.until_stopped:
+                    print('{"event":"agent-activity-stopped"}', flush=True)
 
 
 def main() -> None:
@@ -244,8 +258,12 @@ def main() -> None:
     parser.add_argument(
         '--duration-seconds',
         type=float,
-        default=DEFAULT_DURATION_SECONDS,
-        help='How long to keep the live read-only window open (1..3600)',
+        help='Bounded run lifetime (1..3600); omit with --until-stopped',
+    )
+    parser.add_argument(
+        '--until-stopped',
+        action='store_true',
+        help='Run until the local manager sends a stop request on stdin',
     )
     parser.add_argument(
         '--refresh-seconds',
@@ -266,11 +284,15 @@ def main() -> None:
     )
     args = parser.parse_args()
     require_runtime(parser, args)
+    if args.until_stopped and args.duration_seconds is not None:
+        parser.error('--until-stopped cannot be combined with --duration-seconds')
+    if not args.until_stopped and args.duration_seconds is None:
+        args.duration_seconds = DEFAULT_DURATION_SECONDS
     try:
         validate_source_options(args.sources)
     except ValueError as error:
         parser.error(str(error))
-    if not 1 <= args.duration_seconds <= 3600:
+    if not args.until_stopped and not 1 <= args.duration_seconds <= 3600:
         parser.error('--duration-seconds must be between 1 and 3600')
     if not MIN_REFRESH_SECONDS <= args.refresh_seconds <= MAX_REFRESH_SECONDS:
         parser.error('--refresh-seconds must be between 5 and 120')

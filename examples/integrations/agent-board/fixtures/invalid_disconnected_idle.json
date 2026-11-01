@@ -1,6 +1,6 @@
 {
   "kind": "wincraft.activity.draft",
-  "schema_version": "draft-2026-10-29",
+  "schema_version": "draft-2026-11-01",
   "source_type": "fixture",
   "device_id": "fixture-device",
   "provider_id": "fixture.invalid",

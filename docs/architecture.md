@@ -34,7 +34,9 @@ Tauri 原生窗口适配器                 内部管理提供者
 
 `apps/desktop/src-tauri` 负责真实窗口，将已接受的窗口意图应用到系统。它不能决定外心是否暂停。通过受限的 caller-window IPC 接收交互，不允许某个渲染器指定另一个世界的 ID。
 
-托盘全局 hide/show 是独立于每个 `WindowSpec.visible` 的临时 host overlay：hide 时记住逻辑可见的 world IDs，native windows 隐藏但 scene、lease 和 provider 偏好不变；show 只恢复这些仍保持 `visible=true` 的世界。单窗最小化仍通过 `visible` 进入快照，provider 可观察和恢复。标题栏点击折叠只影响 renderer 展示高度，不触碰 Rust 世界状态。
+Manager 中登记的 Agent Activity 是受宿主监督的本机 Provider：操作员从通用管理器组件显式启动/停止/重启；Tauri 从当前 Host 取得 descriptor 并仅传给固定 Provider 子进程。进程不显示终端、不走 shell。Provider 首次成功写入场景后才报告 ready；本机 stop 请求让 Provider 清理自己的临时 world，最多等待 8 秒，超时则报告失败并由 Host 结束子进程。重启先确认旧进程退出再启动新实例。当前本机原型从 checkout 中寻找固定 Python 源文件，尚未集成独立应用安装包或自动启动。
+
+托盘全局 hide/show 是独立于每个 `WindowSpec.visible` 的临时 host overlay：hide 时记住逻辑可见的 world IDs，native windows 隐藏但 scene、lease 和 provider 偏好不变；show 只恢复这些仍保持 `visible=true` 的世界。单窗最小化仍通过 `visible` 进入快照，provider 可观察和恢复。标题栏点击折叠通过本地呈现状态驱动原生窗口收缩到标题栏尺寸，展开时恢复尺寸；不销毁世界、不改变业务数据或租约。
 
 Tauri tray Exit 与 headless Ctrl+C 共用 `RunningServer::shutdown()`：停止接受新连接，向 WebSocket 客户端发送关闭信号，撤销并断开普通 provider session，停止 housekeeping/listener 任务，再删除当前宿主拥有的 runtime descriptor。`Drop` 保留 abort 兜底；异常强杀仍可能留下一份失效 descriptor，不能把它当作正在运行的 host。
 

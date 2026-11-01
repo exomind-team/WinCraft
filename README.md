@@ -1,7 +1,7 @@
 # WinCraft · 可组合桌面窗口运行时
 
 **版本：0.1.0-alpha.1 / 原型源码交接，非已验收发行版。**
-**文档更新时间：2026-10-31。**
+**文档更新时间：2026-11-02。**
 
 本机 lifecycle release 已与真实 TrafficMonitor x64 Provider 联调；可提交的验证摘要见 [`docs/engineering/VALIDATION.md`](docs/engineering/VALIDATION.md)，逐项本机记录位于默认不提交的 `evidence/local/`。通用 Obsidian Workspace 插件、Provider 与代码包导入是当前示例实现，尚未完成真实 Obsidian/原生 UI 验收。TrafficMonitor 桥接已从当前源码重编并实测报告 1.8.6.0；这仍是本地原型验证，不代表对外发行或安全认证。
 
@@ -32,9 +32,11 @@
 | 网络 | 统一健康检查与鉴权发现、协议握手、双向 WebSocket；非本机提供者可通过 SSH 隧道接入 |
 | 开发支撑 | 可独立运行的 headless Rust 宿主；Python 示例、真实协议验收探针、只读外心桥接；Windows 自动化验证 CI |
 
-上述是**源码覆盖范围**，不是全部运行验收通过的功能清单。尤其 Tauri/Win32、WS 端到端与外心实机链路必须由本地 Codex 验证。
+上述是**源码覆盖范围**，不是全部运行验收通过的功能清单。Rust/WebSocket、原生像素与真实业务来源的验收范围分别见验证矩阵；不能由某一层通过推断全部通过。
 
 组件子树租约与 metadata-only `scope.status` 仅属于显式选择的 `0.4-preview.1` 实验协议；稳定 0.3 的整窗独占语义不变。`scope.status` 只报告 WinCraft scope 的 `online/stale/vacant/revoked/unknown`，不读取 sibling 业务数据，也不替来源 Provider 判断 Codex/Claude 会话是否撤销。提供者接入步骤见 [组件 scope preview 指南](skills/wincraft-provider/references/component-scopes-preview.md)。
+
+普通用户日用入口、当前原生观察与剩余缺口见[中文准备度调查](docs/product/DAILY_USE_READINESS.zh-CN.md)（[English](docs/product/DAILY_USE_READINESS.en-US.md)）；当前 EXE 的哈希见[中文验收指南](docs/release/WINCRAFT_ALPHA1_ACCEPTANCE_CN.md)。
 
 ## 快速开始
 
@@ -50,6 +52,8 @@ npm run desktop:dev
 本地开发规范、CodeGraph 索引和分层验证边界见 [`docs/engineering/DEVELOPMENT_TOOLCHAIN.md`](docs/engineering/DEVELOPMENT_TOOLCHAIN.md)。
 
 桌面启动后默认只有托盘，不自动弹出主界面。从托盘打开“世界管理器”，获取连接描述文件的路径。
+
+Agent Activity 可直接从管理器的“Agent 总览”控制卡启动、停止或重启。Host 会在内部传入当前连接，不需要用户复制描述符或运行命令；完整步骤和本阶段尚待人工实测项见[中文说明](examples/integrations/agent-board/README.zh-CN.md)。
 
 本机自动化也可显式打开管理器窗口；不带该参数仍保持托盘优先：
 
@@ -112,7 +116,7 @@ evidence/local/           本地 Codex 实测命令、修复与验证矩阵
 
 ## 刻意暂不实现
 
-组件级多写者借用、CRDT、长期存档与常客绑定、插件市场、任意代码执行、完整 Adaptive Cards/A2UI 兼容、鼠标跟随/外部窗口附着、游戏引擎/桌宠、原生 TLS/LAN 服务、浏览器 Origin 开放、全平台原生兼容，均不在本轮已实现能力中。
+稳定协议的组件级多写者（仅有显式 preview）、CRDT、长期业务存档与常客绑定、插件市场、任意代码执行、完整 Adaptive Cards/A2UI 兼容、鼠标跟随/外部窗口附着、游戏引擎/桌宠、原生 TLS/LAN 服务、浏览器 Origin 开放、全平台原生兼容，均不在本轮已实现能力中。
 
 ## 来源与许可
 

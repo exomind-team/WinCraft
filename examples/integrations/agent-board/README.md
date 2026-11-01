@@ -1,8 +1,18 @@
-# Agent Board: synthetic read-only activity projection
+# Agent Board: read-only activity projection
+
+The interactive synthetic projection remains available for tutorial and test use. For the local read-only Codex/Claude overview, see [README.zh-CN.md](README.zh-CN.md); the WinCraft manager now owns its child-process lifecycle. The current prototype loads Provider code from the WinCraft checkout; this is not an independently packaged app.
+
+## Start Agent Activity from the WinCraft manager
+
+With the WinCraft repository checkout available, build or start the desktop Host and open its world manager. The built-in **Agent Activity** controls start, stop and restart the bounded local reader directly. The Host supplies its current runtime descriptor; you do not copy a path or run a command. The manager shows when the Provider is connecting, running, stopped or unavailable. Stopping sends a local request, waits for the Provider to clean up its own world, and only force-stops it after an eight-second timeout.
+
+The Provider reads the explicitly selected Codex CLI, Codex App and Claude Code sources. App/Claude process status comes from OS metadata; detail comes from their bounded local files. Values remain local. The manager reports unavailable when Python or required modules are missing. In this prototype the Provider files still live in the checkout; an independently packaged `wincraft-agent-activity` app is a later delivery step.
+
+**Behavior scenario:** Given the Host manager is open and its built-in Provider is available, when the user selects Start, the Host launches one hidden Python child with its current descriptor and the UI changes to Running only after the first world snapshot succeeds. When the user selects Stop, the child requests its own world cleanup and exits; Restart waits for that exit before starting a replacement.
 
 This example uses only `fixtures/synthetic_activities.json`. It does not discover,
 connect to, or read any Claude Code, Codex, OpenCode, DeepSeek Harness, or `omp`
-session. The activity record in `protocol/activity.schema.json` is `draft-2026-10-29`,
+session. The activity record in `protocol/activity.schema.json` is `draft-2026-11-01`,
 a draft proposal and not a protocol 0.3 host method. The separate `draft-2026-10-26`
 handoff schema remains preserved as its original planning artifact.
 

@@ -12,6 +12,8 @@
 
 本次会话的新世界名称、默认置顶；创建空白世界；刷新；展示世界状态与 native 错误；接管并找回；解除接管；两步确认关闭。`0.4-preview.1` 另提供本机 `.wcp` 配置包预览、来源/权限选择、显式 grant 后重新规划、确认后逐窗创建和两步回退；它仍是草案扩展，不进入稳定 0.3 外部方法表。管理器将 pack 的描述性 scene 用通用 renderer 显示，不加载独立 HTML 页面或运行 pack adapter。
 
+管理器还有固定的 Agent Activity 控制卡。它通过普通 button/action/result 通道要求 desktop Host 启动、停止或重启受管 Python Provider；Host 内部传递本次连接 descriptor。状态来自真实 child 与首份成功场景；停止请求等 Provider 删除自己的 world，8 秒后仍未退出才强制终止并明确显示失败。此固定内置 Provider 与任意 Provider bundle 分开；后者仍必须由用户检查并逐次确认。
+
 托盘还保留救援和退出。不能完全依赖 renderer 来解救失效 renderer。管理器关闭时只隐藏，宿主继续存在；软件正常运行不要求一个主页面长期打开。
 
 正常启动默认只显示托盘。开发/联调时可对桌面 EXE 传入 `--open-manager`，显式打开该实例的管理器窗口；不带参数的实例仍保持托盘优先。

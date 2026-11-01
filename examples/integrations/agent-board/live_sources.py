@@ -19,7 +19,7 @@ import threading
 import time
 from ctypes import wintypes
 from collections import Counter, OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -339,6 +339,8 @@ class LiveSnapshot:
     '''当前采样序号'''
     source_observed_at: dict[str, datetime]
     '''每个来源最近一次成功快照的来源采集时刻；缺少采集时刻时回退为本机接收时刻'''
+    source_updated_at: dict[str, datetime] = field(default_factory=dict)
+    '''来源文件中可核验的最新更新时间，与本 Provider 最近读取时间分开保存'''
 
 
 def normalize_live_source_selection(enabled_sources: tuple[str, ...] | None) -> tuple[str, ...]:
@@ -476,6 +478,16 @@ def _timestamp(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
+def _unix_millis_timestamp(value: object) -> str | None:
+    '''Safely normalize a persisted millisecond timestamp without logging its raw value.'''
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return _timestamp(datetime.fromtimestamp(value / 1000, timezone.utc))
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
 def _add_source_freshness(
     projection: dict[str, Any],
     source_observed_at: Mapping[str, datetime],
@@ -557,7 +569,7 @@ def _activity_record(
     expires_at = observed_at + timedelta(seconds=SOURCE_SNAPSHOT_TTL_SECONDS)
     return {
         'kind': 'wincraft.activity.draft',
-        'schema_version': 'draft-2026-10-29',
+        'schema_version': 'draft-2026-11-01',
         'source_type': source_id,
         'device_id': 'local-device',
         'provider_id': provider_id or provider_ids[source_id],
@@ -1250,6 +1262,9 @@ def read_codex_app_local_threads(
         )
         record['project_label'] = _project_label_from_cwd(item.get('cwd')) or '未归属项目'
         record['codex_app_thread_id'] = thread_id
+        source_updated_at = _unix_millis_timestamp(item.get('updated_at_ms'))
+        if source_updated_at:
+            record['source_updated_at'] = source_updated_at
         summary = (
             _read_codex_rollout_agent_output(item.get('rollout_path'), thread_id)
             if source_order < CODEX_APP_LOCAL_OUTPUT_READ_LIMIT
@@ -1373,6 +1388,7 @@ def read_claude_local_sessions(
             else f'Claude Code 会话 · {display_suffix}'
         )
         record['project_label'] = project_label
+        record['source_updated_at'] = _timestamp(datetime.fromtimestamp(modified_at, timezone.utc))
         record['source_status'] = 'history_record'
         record['last_output_kind'] = 'unavailable'
         records.append(record)
@@ -1449,6 +1465,7 @@ def read_claude_local_sessions(
             else f"Claude Code 子 Agent · {record['session_id'][-6:]}"
         )
         record['project_label'] = project_label
+        record['source_updated_at'] = _timestamp(datetime.fromtimestamp(modified_at, timezone.utc))
         record['last_output_kind'] = 'unavailable'
         records.append(record)
         output_candidates.append((modified_at, record, path, parent_id, agent_id))
@@ -1797,7 +1814,26 @@ def load_live_snapshot(
             health[source_id] = 'partial'
 
     records = [record for source_records in records_by_source.values() for record in source_records]
+    session_updated_at: dict[tuple[str, str, str, str], str] = {}
+    for record in records:
+        source_time = record.pop('source_updated_at', None)
+        if isinstance(source_time, str):
+            session_updated_at[identity_key(record)] = source_time
+    source_updated_at: dict[str, datetime] = {}
+    for identity, value in session_updated_at.items():
+        try:
+            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            continue
+        if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+            timestamp = parsed.astimezone(timezone.utc)
+            if timestamp > source_updated_at.get(identity[0], datetime.min.replace(tzinfo=timezone.utc)):
+                source_updated_at[identity[0]] = timestamp
     projection = aggregate_activities(records, now=observed_at)
+    for session in projection['sessions']:
+        source_time = session_updated_at.get(tuple(session['identity']))
+        if source_time is not None:
+            session['source_updated_at'] = source_time
     projection['source_health'] = health
     projection['source_data_health'] = data_health
     projection['source_labels'] = LIVE_SOURCE_LABELS
@@ -1826,7 +1862,11 @@ def load_live_snapshot(
         and any(record.get('codex_app_thread_id') for record in records_by_source['codex-app'])
     )
     _add_source_freshness(projection, source_observed_at, now=observed_at)
-    return LiveSnapshot(projection, records_by_source, sequence, source_observed_at)
+    projection['source_updated_at'] = {
+        source_id: _timestamp(timestamp)
+        for source_id, timestamp in source_updated_at.items()
+    }
+    return LiveSnapshot(projection, records_by_source, sequence, source_observed_at, source_updated_at)
 
 
 def summarize_live_snapshot(snapshot: LiveSnapshot) -> dict[str, Any]:

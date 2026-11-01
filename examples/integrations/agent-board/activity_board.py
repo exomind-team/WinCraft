@@ -210,6 +210,8 @@ def validate_and_refresh(
         for field in ("project_label", "codex_app_thread_id", "last_output_kind"):
             if field in record:
                 normalized_record[field] = record[field]
+        if "source_updated_at" in record:
+            normalized_record["source_updated_at"] = record["source_updated_at"]
         result.append(normalized_record)
     return result
 

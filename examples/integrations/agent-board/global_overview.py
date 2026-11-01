@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from activity_board import aggregate_activities, load_synthetic_activities
@@ -274,8 +274,33 @@ def _source_update_label(source_id: str, projection: Mapping[str, Any]) -> str:
     if freshness == "stale":
         return f"已过期 · 上次成功 {age} 秒前"
     if freshness == "fresh":
-        return f"刚刚读取（{age} 秒前）" if age < 5 else f"读取于 {age} 秒前"
+        return f"最近读取：{age} 秒前"
     return "采样时间未知"
+
+
+def _relative_source_time(value: Any) -> str:
+    if not isinstance(value, str):
+        return "来源记录更新时间未知"
+    try:
+        updated = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return "来源记录更新时间未知"
+    if updated.tzinfo is None or updated.utcoffset() is None:
+        return "来源记录更新时间未知"
+    seconds = max(0, int((datetime.now(timezone.utc) - updated.astimezone(timezone.utc)).total_seconds()))
+    if seconds < 60:
+        age = f"{seconds} 秒前"
+    elif seconds < 3600:
+        age = f"{seconds // 60} 分钟前"
+    elif seconds < 86400:
+        age = f"{seconds // 3600} 小时前"
+    else:
+        age = f"{seconds // 86400} 天前"
+    return f"来源记录更新：{age}"
+
+
+def _session_file_update_label(session: Mapping[str, Any]) -> str:
+    return _relative_source_time(session.get("source_updated_at"))
 
 
 def _session_output_label(session: Mapping[str, Any]) -> str:
@@ -462,7 +487,7 @@ def build_global_overview_scene(
         "summary": {
             "codex_parallel": primary_codex_count,
             "codex_metric_label": (
-                "Codex App 活跃会话" if is_live else "Codex 并行推进"
+                "Codex App 已确认活跃" if is_live else "Codex 并行推进"
             ),
             "codex_health": health_labels[primary_codex_source],
             "codex_health_tone": health_tones[primary_codex_source],
@@ -484,7 +509,11 @@ def build_global_overview_scene(
                 str(source_data_health.get("codex-app", "not_requested")), "muted"
             ),
             "claude_sessions": claude_summary["sessions"],
-            "claude_metric_label": f"{source_labels['claude-code']} 后台 Agent",
+            "claude_metric_label": (
+                f"{source_labels['claude-code']} 可读历史记录 · 可能截断"
+                if source_data_health.get("claude-code") == "partial"
+                else f"{source_labels['claude-code']} 可读历史记录"
+            ),
             "claude_running": claude_summary["running"],
             "claude_waiting": claude_summary["waiting"],
             "claude_blocked": claude_summary["blocked"],
@@ -500,6 +529,8 @@ def build_global_overview_scene(
             "codex_cli_updated": _source_update_label("codex", projection),
             "codex_app_updated": _source_update_label("codex-app", projection),
             "claude_updated": _source_update_label("claude-code", projection),
+            "codex_app_file_updated": _relative_source_time(projection.get("source_updated_at", {}).get("codex-app")),
+            "claude_file_updated": _relative_source_time(projection.get("source_updated_at", {}).get("claude-code")),
         },
         "codex_cli_preview": [],
         "codex_app_preview": [],
@@ -653,6 +684,7 @@ def build_global_overview_scene(
                 "source": source_label,
                 "session": target.display_name if target else "所选会话当前不可见",
                 "project": target.project_label if target else "",
+                "file_updated": "记录更新时间未知",
                 "summary_label": "最近输出暂不可用",
                 "summary": "最新快照未返回这条会话；不会据此判定为已撤销。",
                 "status": "当前快照未显示",
@@ -677,6 +709,7 @@ def build_global_overview_scene(
                 "source": str(source_labels.get(current_source, selected["source_type_label"])),
                 "session": selected["display_name"],
                 "project": selected.get("project_label", ""),
+                "file_updated": _session_file_update_label(selected),
                 "summary_label": _session_output_label(selected),
                 "summary": (
                     _summary_preview(selected["summary"])
@@ -708,6 +741,7 @@ def build_global_overview_scene(
                 ),
                 _text("global-detail-output-label", {"$path": "/detail/summary_label"}, "small"),
                 _text("global-detail-summary", {"$path": "/detail/summary"}, "small"),
+                _text("global-detail-file-updated", {"$path": "/detail/file_updated"}, "small"),
                 {
                     "id": "global-detail-status-row",
                     "kind": "row",
@@ -882,6 +916,7 @@ def build_global_overview_scene(
                         "freshness": session["freshness_label"],
                         "project": f"项目：{project_label}",
                         "output": output,
+                        "file_updated": _session_file_update_label(session),
                     }
                 )
                 preview_children = [
@@ -917,6 +952,11 @@ def build_global_overview_scene(
                         {"$path": f"/codex_app_preview/{index}/output"},
                         "small",
                     ),
+                    _text(
+                        f"global-codex-app-preview-updated-{state.revision}-{index}",
+                        {"$path": f"/codex_app_preview/{index}/file_updated"},
+                        "small",
+                    ),
                 ]
                 if session.get("freshness") != "fresh":
                     preview_children.append(
@@ -945,7 +985,7 @@ def build_global_overview_scene(
                     )
                 )
         claude_sessions = sources["claude-code"]
-        children.append(_text("global-claude-preview-title", f"{source_labels['claude-code']} · 后台 Agent 状态", "heading"))
+        children.append(_text("global-claude-preview-title", f"{source_labels['claude-code']} · 本机可读历史", "heading"))
         if not claude_sessions:
             health = source_health.get("claude-code", "unknown")
             data_health = source_data_health.get("claude-code", "unknown")
@@ -954,7 +994,7 @@ def build_global_overview_scene(
                 if data_health in {"unavailable", "disconnected"}
                 else "Claude Code 进程离线；本机没有可显示的历史会话。"
                 if health == "offline"
-                else "当前没有可显示的后台 Agent。"
+                else "当前没有可显示的本机历史记录。"
             )
             children.append(_text("global-claude-preview-empty", empty_text))
         for index, session in enumerate(claude_sessions[:MAX_CLAUDE_PREVIEW_SESSIONS]):
@@ -967,6 +1007,7 @@ def build_global_overview_scene(
                     "freshness": session["freshness_label"],
                     "project": _session_project_value(session),
                     "output": _session_output_value(session),
+                    "file_updated": _session_file_update_label(session),
                 }
             )
             preview_children = [
@@ -998,6 +1039,11 @@ def build_global_overview_scene(
                 _text(
                     f"global-claude-preview-output-{state.revision}-{index}",
                     {"$path": f"/claude_preview/{index}/output"},
+                    "small",
+                ),
+                _text(
+                    f"global-claude-preview-updated-{state.revision}-{index}",
+                    {"$path": f"/claude_preview/{index}/file_updated"},
                     "small",
                 ),
             ]
@@ -1032,9 +1078,10 @@ def build_global_overview_scene(
         children.append(
             _text(
                 "global-source-summary",
-                f"{summary['sessions']} sessions · {summary['running']} running · "
-                f"{summary['waiting']} waiting · {summary['blocked']} blocked · "
-                f"{summary['unknown']} status unknown · {summary['stale']} stale",
+                f"读取 {summary['sessions']} 条历史记录 · {summary['running']} 个状态已确认运行 · "
+                f"{summary['waiting']} 个等待 · {summary['blocked']} 个阻塞 · "
+                f"{summary['unknown']} 个状态未知 · {summary['stale']} 个数据过期"
+                f"{' · 本轮部分读取' if source_data_health.get(current_source) == 'partial' else ''}",
                 "small",
             )
         )
@@ -1045,6 +1092,12 @@ def build_global_overview_scene(
                 "small",
             )
         )
+        if current_source in {"codex-app", "claude-code"}:
+            children.append(_text(
+                "global-source-file-updated",
+                _relative_source_time(projection.get("source_updated_at", {}).get(current_source)),
+                "small",
+            ))
         if not page_sessions:
             health = source_health.get(current_source, "unknown")
             empty_text = (
@@ -1063,6 +1116,7 @@ def build_global_overview_scene(
                     "freshness": session["freshness_label"],
                     "project": _session_project_value(session),
                     "output": _session_output_value(session),
+                    "file_updated": _session_file_update_label(session),
                 }
             )
             if current_source == "codex-app":
@@ -1101,6 +1155,11 @@ def build_global_overview_scene(
                     _text(
                         f"global-session-output-{state.revision}-{index}",
                         {"$path": f"/sessions/{index}/output"},
+                    ),
+                    _text(
+                        f"global-session-updated-{state.revision}-{index}",
+                        {"$path": f"/sessions/{index}/file_updated"},
+                        "small",
                     ),
                 ]
                 if session.get("freshness") != "fresh":
@@ -1145,6 +1204,11 @@ def build_global_overview_scene(
                     _text(
                         f"global-session-output-{state.revision}-{index}",
                         {"$path": f"/sessions/{index}/output"},
+                        "small",
+                    ),
+                    _text(
+                        f"global-session-updated-{state.revision}-{index}",
+                        {"$path": f"/sessions/{index}/file_updated"},
                         "small",
                     ),
                     *(

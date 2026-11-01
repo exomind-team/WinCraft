@@ -1,7 +1,7 @@
 ---
 title: WinCraft 0.1.0-alpha.1 Windows 验收指南
-updated_at: 2026-10-31
-last_verified_at: 2026-10-31
+updated_at: 2026-11-01
+last_verified_at: 2026-11-01
 status: local-release-acceptance-guide
 audience: maintainer, Windows tester
 ---
@@ -12,18 +12,18 @@ audience: maintainer, Windows tester
 
 | 项目 | 值 |
 |---|---|
-| Tauri Host EXE 源码提交 | `9073b3bd77e439e95c6452967a33416d31f23a11` |
-| Agent Activity Provider 示例 | `0696cbeb9b3ef69cb9c6a9b43901fae6e922ea7b`（仓库内 Python 示例，单独运行，不打包进 EXE）|
+| 源码基线 | `43b804b844ee7fe91e14b6b0a949ab8704306296` + 当前未提交 Agent Activity 工作区修改 |
+| Provider | Python 单独运行；当前由管理器本机生命周期启动，不打包进 EXE |
 | 程序路径 | `target/release/wincraft-desktop.exe` |
-| 文件大小 | 13,600,256 bytes |
-| SHA-256 | `7E910E01057DADB17991B00D2A51CE63419628F818C35C06C1EE3D0C3179D691` |
+| 文件大小 | 14,402,560 bytes |
+| SHA-256 | `A2642924DC770A1B8B6C6E92921D42399A97C5D80379C98F8BEEE9D8F5EA40AB` |
 | 产品文件版本 | `0.1.0-alpha.1` |
 
-这是单个 Windows 可执行文件，不是安装器，也不是 GitHub Release。`npm run desktop:build` 从提交 `9073b3b` 构建，退出码 0；该产品二进制之后未因本机验收探针、测试脚本或文档提交而改变。最新完成的源码门禁 `npm run check:local` 通过 28 项 UI、149 项 Rust workspace、225 项 Python（1 项 Windows symlink 能力跳过）及严格 Clippy。Windows Actions run [41179930393](https://github.com/exomind-team/WinCraft/actions/runs/41179930393) 对文档提交 `10a3df9` 通过；后续提交 `850ee0d` 的 run [41182047022](https://github.com/exomind-team/WinCraft/actions/runs/41182047022) 也通过（source job 12m05s）。两次提交均未改动产品运行时代码。CI 不替代原生 GUI 验收。
+这是从当前未提交工作区构建的本机未签名单文件，不是安装器或 GitHub Release。它通过真实 release headless Rust Host 的 Agent Activity 双来源读取/正常清理 smoke；没有把其他 EXE 的验收结果转移到此 build。源码 CI 的最近 run [41226574451](https://github.com/exomind-team/WinCraft/actions/runs/41226574451) 只对应 `43b804b`，本轮工作未推送 CI。
 
-首次 release 曾因在同步 Tauri setup 回调直接调用 `tokio::spawn` 而以 101 退出；现已改为通过 `tauri::async_runtime::spawn` 调度。`9073b3b` release 已以 tray-only 默认模式独立启动，并通过真实 Tauri Host 的 41 项 Python 协议探针。用户此前报告过托盘菜单/窗口打开、窗口拖动和一次折叠行为正常；这些历史反馈未绑定本指南所列 EXE 哈希，且另一次打开管理器曾报告无响应，因此本指南不将其记为当前构建 PASS。B06-03 的预览、授权重规划、应用、回执和回退点击仍需针对当前构建实测。Computer Use native pipe 在重试与 JS kernel reset 后仍无法连接，因此本轮没有新增窗口截图或点击证据。
+Computer Use 在 2026-11-01 恢复：原生管理器展开、UIA/截图、字号 110%/恢复成功；真实 App/Claude 只读 Provider 运行 240 秒、16 次快照，App online、Claude offline，来源页点击有回执，当前项目会话名称/项目可见，部分卡片有 Agent 输出和读取年龄。当前项目输出缺失、逐会话 unknown、线程导航和 stale/failure 故障注入未验收。Provider 退出码 0 并确认清理自己的世界。一次 input geometry 失败经重新选择/激活恢复。
 
-2026-10-30 用户明确要求改用本机进程状态与磁盘会话数据，不需要与 Codex App 通信。当前源码包含 Codex App state DB/rollout 与 Claude Code JSONL/subagent 只读适配；count-only smoke 确认 Codex App 进程在线、Claude Code 进程离线但历史可读。标准 release 上的只读 live provider 以 `codex`、`codex-app`、`claude-code` 三源运行，真实提交了三次场景快照并清理自己的临时世界；来源摘要为 Codex CLI online/0、Codex App online/128、Claude Code offline/128。它证明三源进入同一个 Host scene 更新路径，不证明像素呈现：本机没有取得 Agent Activity 截图或 accessibility tree，所以标题/项目/Agent 输出卡片、freshness 展示和 UUID-only 深链接仍为 `NOT_RUN`。
+新 manager 已用 `--open-manager` 启动且被窗口枚举发现。Computer Use 两次激活均返回 `failed to activate captured window`，因此新 Agent Activity 管理器按钮尚未原生点击，不能算通过。headless smoke 证明真实 Provider/Host 协议清理，不替代 Tauri 窗口验收。托盘退出/全局显隐、穿透救援、多屏/DPI、休眠仍未实测；复制路径按钮未核对剪贴板内容；Provider bundle 未完成预览/安装/启动。日用差距见[准备度调查](../product/DAILY_USE_READINESS.zh-CN.md)。
 
 ## 性能与崩溃边界
 
@@ -56,7 +56,7 @@ audience: maintainer, Windows tester
 | 自动尺寸与文本（W07/W15） | 调宽/调窄 Obsidian Workspace 或 TrafficMonitor；高度随内容布局收敛；长中文/长无空格文本在组件内换行；底部和右侧默认无窗口级滚动条。 | ____ |
 | 折叠、拖动、隐藏（W18/W20） | 折叠后窗口只剩标题栏且宽度收紧；展开恢复；标题栏隐藏时普通背景仍可拖动；隐藏后可从管理器恢复同一 world。 | ____ |
 | 本机全局快捷键（B04-03） | 默认未注册；管理器中明确启用后按下组合键应打开/聚焦管理器；停用后按键不再触发。注册冲突和 IME/系统保留组合必须失败关闭。 | Rust 回归和 release build：PASS；当前构建的真实启用/按键/冲突/撤销/IME：NOT_RUN |
-| Agent Activity 会话卡片（B08-02/B08-03） | Codex App/CLI/Claude 来源卡片显示名称、状态、项目和来源文本；无权威逐会话状态时显示未知。 | 16 项总览测试覆盖来源切换时恢复 Codex App/CLI/Claude 各自详情 identity/page、missing tombstone 保留 freshness 与撤销 unknown；三源 live Host scene 和 scope lifecycle L4 smoke 通过。当前 release 像素仍 NOT_RUN；scope 撤销不能映射为外部会话撤销，B08-03-A4 仍 PARTIAL。|
+| Agent Activity 会话卡片（B08-02/B08-03） | Codex App/CLI/Claude 来源卡片显示名称、状态、项目和来源文本；无权威逐会话状态时显示未知。 | 16 项总览测试覆盖来源切换时恢复 Codex App/CLI/Claude 各自详情 identity/page、missing tombstone 保留 freshness 与撤销 unknown；三源 live Host scene 和 scope lifecycle L4 smoke 通过。2026-11-01 当前 release 已观察 App/Claude 来源、名称/项目、部分输出、读取年龄和来源切换回执；当前项目输出缺失、UUID-only 导航和 stale/failure 注入仍未完成。scope 撤销不能映射为外部会话撤销，B08-03-A4 仍 PARTIAL。|
 | 置顶与透明度（W12） | 默认置顶且默认透明度 80%；普通窗口不能覆盖；另一个置顶窗口遵循 Windows z-order；provider 配置后实际效果可见。 | ____ |
 | 点击穿透救援（W09） | 启用穿透后仍能从托盘/管理器救援；窗口恢复可点击、可见、在屏幕内；旧写者失权。 | ____ |
 | 多屏与缩放（W11/W28） | 在不同 DPI、负坐标副屏和显示器拔插后检查位置/尺寸，窗口仍可找回。 | ____ |
@@ -71,7 +71,7 @@ audience: maintainer, Windows tester
 
 ## B06-03 配置包导入人工验收
 
-当前提交 `9073b3b` 的 B06-03 stale-action 修复 release（SHA-256 `7E910E01057DADB17991B00D2A51CE63419628F818C35C06C1EE3D0C3179D691`）已在 tray-only 默认模式独立启动，并通过真实 Tauri Host 的 41 项 Python 协议探针；管理器 UI 尚未打开，因此预览、授权重规划、应用、Provider 回执和回退操作仍需逐项人工实测。以下步骤可由维护者在“窗构 · 世界管理器”中完成。数据全部为合成样例；不使用真实 Provider 或用户世界。
+当前 EXE 身份以“本次构建”表为准。以下是合成配置包的验收步骤，管理器预览、授权重规划、应用、Provider 回执和回退的完整原生点击仍未完成。本轮恢复 Computer Use 和观察管理器不等于这些用例已通过。
 
 ### 样例与提供者
 

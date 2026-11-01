@@ -2,7 +2,7 @@
 {
   "doc_id": "plan__ACCEPTANCE",
   "title": "验收矩阵（生成视图）",
-  "updated_at": "2026-11-01",
+  "updated_at": "2026-11-02",
   "last_verified_at": "2026-10-26",
   "baseline_commit": "6929056700b1ba6702288534579debc8a502c139",
   "protocol_baseline": "0.3",
@@ -129,8 +129,9 @@
 | B08-02-A1 | B08-02 | L2-L5 | Claude Code、Codex CLI 与 Codex App 三种独立来源在同一总览中表达；Codex App/Claude Code 在线状态由进程证据决定，缺失来源不伪造成空闲。 | PASS |
 | B08-02-A2 | B08-02 | L2-L5 | 只读取显式配置的数据根与固定文件布局，设置项目/文件/输出上限；不把任意历史会话视为完整可枚举，范围受限时明确 partial。 | PASS |
 | B08-02-A3 | B08-02 | L2-L5 | 进程不存在但本地历史可读时来源为 offline 且历史仍显示；进程状态、数据可读性和读取新鲜度分别呈现，单源读取失败只影响该来源。 | PASS |
-| B08-02-A4 | B08-02 | L2-L5 | Codex App 与 Codex CLI 保持独立来源；Codex App 从本机状态库/经 UUID 校验的 rollout 显示标题、项目、最近 Agent 输出和诚实状态，标题点击只使用受限 UUID-only 原生线程导航。 | STALLED |
+| B08-02-A4 | B08-02 | L2-L5 | Codex App 与 Codex CLI 保持独立来源；Codex App 从本机状态库/经 UUID 校验的 rollout 显示标题、项目、最近 Agent 输出和诚实状态，标题点击只使用受限 UUID-only 原生线程导航。 | PARTIAL |
 | B08-02-A5 | B08-02 | L2-L5 | 每个来源显示最近成功读取年龄及 stale/disconnected 边界；没有权威逐会话状态时显示 unknown，不将 source process online 等同所有会话 active。 | PARTIAL |
+| B08-02-A6 | B08-02 | L1-L5 | 世界管理器可以一键启动、停止和重启内置 Agent Activity；状态反映真实子进程与首个场景就绪，停止会先请求 Provider 清理自己的世界，重启等旧子进程退出后启动唯一新实例，不要求用户复制 descriptor 或运行命令。 | PARTIAL |
 | B08-03-A1 | B08-03 | L1-L5 | 五类都有明确入口/未知边界，不伪造五种实测 | PASS |
 | B08-03-A2 | B08-03 | L1-L5 | 至少两种真实独立writer并发验收 | PASS |
 | B08-03-A3 | B08-03 | L1-L5 | 动作路由跟随组件owner，不被后加入者截获 | PARTIAL |

@@ -50,7 +50,7 @@ def message(**overrides):
 def activity(**overrides):
     base = {
         'kind': 'wincraft.activity.draft',
-        'schema_version': 'draft-2026-10-29',
+        'schema_version': 'draft-2026-11-01',
         'source_type': 'codex',
         'device_id': 'desktop-1',
         'provider_id': 'codex',

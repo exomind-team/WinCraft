@@ -1,7 +1,7 @@
 ---
 title: WinCraft release gate and claims boundary
-updated_at: 2026-10-31
-last_verified_at: 2026-10-31
+updated_at: 2026-11-02
+last_verified_at: 2026-11-02
 protocol_baseline: 0.3
 status: pre-release-gate
 audience: maintainer, release-validator
@@ -13,15 +13,14 @@ This is a pre-release audit for WinCraft `0.1.0-alpha.1`. It is not release appr
 
 ## Claims allowed from current evidence
 
-- Source validation on commit `f39de58` passed `npm run check:local`: 28 UI tests, 149 Rust workspace tests, 225 Python tests (one Windows symlink-capability skip), Clippy, contracts and 33 Provider Skill references. Windows Actions run [41170007833](https://github.com/exomind-team/WinCraft/actions/runs/41170007833) passed in 12m19s. The documentation-only follow-up `8746400` passed Windows Actions run [41173578234](https://github.com/exomind-team/WinCraft/actions/runs/41173578234) in 12m05s. CI validates source; it does not replace native UI acceptance.
-- Commit `d95e396` was pushed to `exomind-team/WinCraft/dev`; GitHub Actions run [41189190278](https://github.com/exomind-team/WinCraft/actions/runs/41189190278) passed. Local verification also passed 28 UI, 149 Rust and 239 Python tests (one Windows symlink-capability skip), 41 Provider Skill references, and the synthetic `scripts/model_quota_headless_smoke.py` against the release headless Rust Host. CI validates source, not native Tauri pixels or real account freshness.
-- `target/release/wincraft-desktop.exe` is a local, unsigned, single-file Tauri build from product-source commit `9073b3b`: 13,600,256 bytes, SHA-256 `7E910E01057DADB17991B00D2A51CE63419628F818C35C06C1EE3D0C3179D691`. It launches tray-only by default and has passed real Tauri-hosted `lease_probe.py` checks. The build is not an installer and is not a GitHub Release.
-- Latest local candidate built by `npm run desktop:build`: `target/release/wincraft-desktop.exe`, 14,209,536 bytes, SHA-256 `E8F949E73C0A4BD0182B26D327162599F133658A244B4B498E1DF9978C447B76`. It was independently launched with `--open-manager`; Manager screenshots, drag/drop and clipboard action still require manual verification. The binary is local, unsigned and not an installer.
+- Latest source CI: [Actions run 41226574451](https://github.com/exomind-team/WinCraft/actions/runs/41226574451) succeeded for `43b804b`. Recent recorded local checks include 30 UI, 165 Rust workspace (one ignored), and 270 Python tests (one skipped), across separate checkpoints. They were not rerun in this documentation/native-readiness review.
+- Current local EXE: `target/release/wincraft-desktop.exe`, 14,402,560 bytes, SHA-256 `A2642924DC770A1B8B6C6E92921D42399A97C5D80379C98F8BEEE9D8F5EA40AB`, built from `43b804b` plus uncommitted Agent Activity changes. It is unsigned and is not an installer or GitHub Release.
+- The manager can start/stop/restart its local Agent Activity child without a descriptor path or terminal. Windows manager action routing, an actual managed Python child start/ready/stop/restart cycle, and a real release-headless App/Claude source smoke passed. Computer Use enumerated the newly launched manager but failed twice to activate it (`failed to activate captured window`), so the manager buttons and current rendered cards still need native visual acceptance.
 - Synthetic performance evidence includes 5-, 15- and 30-minute visible refresh runs (60/180/360 updates), provider-crash reacquisition, headless Host disconnect and one forced Tauri Host shutdown. In the Tauri crash sample, six WebView descendants exited within three seconds. The 30-minute sample's private-byte median declined while working set increased about 20 MB; this is not a long-term leak guarantee or a cross-machine performance claim. Full context and boundaries are in [`docs/performance.md`](performance.md).
 - A pre-refactor Tauri release accepted a three-second synthetic Codex/MiniMax/DeepSeek scene and cleaned its world. After the current B05-02 source refactor, the reproducible synthetic smoke runs the Provider against the release headless Rust Host; no real rollout/auth file, provider key, TeamSense service or external quota endpoint is read. Current quota HUD pixels and live Codex/DeepSeek/MiniMax source freshness remain NOT_RUN.
 - `B06-03` stale-grant logic and `B06-04` export hygiene have automated checks. Manager preview/grant/apply/rollback pixels and two-user import remain NOT_RUN/PARTIAL; detailed steps are in the [Chinese acceptance guide](release/WINCRAFT_ALPHA1_ACCEPTANCE_CN.md).
 - Repository identity remains `exomind-team/WinCraft`, on branch `dev`. The repository is public as of 2026-10-31 (visibility changed by the repository owner, not by this release gate). No release or tags exist. The current license files, product/package names and ownership were not changed from baseline; `WinCraft` and `窗构` remain explicitly provisional names.
-- The Chinese Windows acceptance guide is versioned for `0.1.0-alpha.1` and updated `2026-10-31`; this English gate states the same claim limits and pending native checks. Neither document declares the prototype ready for public release.
+- The Chinese Windows acceptance guide is versioned for `0.1.0-alpha.1` and updated `2026-11-01`; this English gate states the same claim limits and pending native checks. Neither document declares the prototype ready for public release.
 
 ## Claims forbidden until manual gates pass
 
@@ -36,7 +35,7 @@ This is a pre-release audit for WinCraft `0.1.0-alpha.1`. It is not release appr
 - live Codex/DeepSeek/MiniMax quota sources, browser bridge, voice, TouchAI, SysTorch, ExoMind or Android sources;
 - long-term leak freedom, sleep/wake, resource thresholds, signed installer, ACL isolation or production security certification.
 
-The Computer Use helper's Windows native pipe failed both initial and post-reset attempts on `2026-10-31`; no clicks or screenshots were issued during those attempts. Historical user reports for tray/window behaviors are not tied to this exact executable hash and are not substituted for a current-build PASS.
+Computer Use enumerated the current manager but failed twice to activate it with `failed to activate captured window`. Agent Activity's manager buttons and rendered fields therefore remain PARTIAL/NOT_RUN until a user clicks them on this build. The headless smoke does not replace native UI acceptance. See the [daily-use assessment](product/DAILY_USE_READINESS.en-US.md) and [2026-11-01 validation section](engineering/VALIDATION.md).
 
 ## Manual gate packet
 

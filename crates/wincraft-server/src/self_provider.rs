@@ -41,6 +41,31 @@ pub trait ProviderBundleLauncher: Send + Sync {
         bundle: &InstalledProviderBundle,
         runtime_descriptor: &Path,
     ) -> std::result::Result<(), String>;
+
+    fn agent_activity_state(&self) -> ManagedAppState {
+        ManagedAppState::Unavailable
+    }
+    fn start_agent_activity(&self, _runtime_descriptor: &Path) -> std::result::Result<(), String> {
+        Err("Agent Activity is unavailable".into())
+    }
+    fn stop_agent_activity(&self) -> std::result::Result<(), String> {
+        Err("Agent Activity is unavailable".into())
+    }
+    fn restart_agent_activity(&self, runtime_descriptor: &Path) -> std::result::Result<(), String> {
+        self.stop_agent_activity()?;
+        self.start_agent_activity(runtime_descriptor)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ManagedAppState {
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+    Failed,
+    #[default]
+    Unavailable,
 }
 
 #[derive(Clone)]
@@ -63,6 +88,7 @@ struct Settings {
     pending_provider_launch: bool,
     provider_store: PathBuf,
     provider_launcher_available: bool,
+    agent_activity_state: ManagedAppState,
 }
 
 impl Default for Settings {
@@ -86,6 +112,7 @@ impl Default for Settings {
             pending_provider_launch: false,
             provider_store: PathBuf::new(),
             provider_launcher_available: false,
+            agent_activity_state: ManagedAppState::Unavailable,
         }
     }
 }
@@ -209,6 +236,10 @@ impl ManagerProvider {
                 title: manager_text(&hub.locale(), "manager.default_world"),
                 shortcut_available: shortcut_host.is_some(),
                 provider_launcher_available: provider_launcher.is_some(),
+                agent_activity_state: provider_launcher
+                    .as_deref()
+                    .map(ProviderBundleLauncher::agent_activity_state)
+                    .unwrap_or_default(),
                 provider_store,
                 ..Settings::default()
             };
@@ -218,6 +249,8 @@ impl ManagerProvider {
                 tokio::select! {
                     _=timer.tick()=>{
                         let _=hub.dispatch(manager.session,"session.ping",json!({}));
+                        settings.agent_activity_state = provider_launcher.as_deref()
+                            .map(ProviderBundleLauncher::agent_activity_state).unwrap_or_default();
                         if let Some(chord)=settings.shortcut_active.clone().filter(|chord|!hub.shortcut_registered(chord)){
                             match shortcut_host.as_deref().map(|host|host.unregister(&chord)){
                                 Some(Err(error))=>{
@@ -292,6 +325,39 @@ impl ManagerProvider {
             }
             "refresh" => {}
             "manager.descriptor.copy" => {}
+            "manager.agent_activity.start" => {
+                let host = provider_launcher.ok_or_else(|| {
+                    Fault::new(
+                        "NATIVE_UNAVAILABLE",
+                        "Agent Activity requires the local desktop host",
+                    )
+                })?;
+                host.start_agent_activity(runtime_descriptor)
+                    .map_err(|error| Fault::new("PROVIDER_START_FAILED", error))?;
+                s.agent_activity_state = host.agent_activity_state();
+            }
+            "manager.agent_activity.stop" => {
+                let host = provider_launcher.ok_or_else(|| {
+                    Fault::new(
+                        "NATIVE_UNAVAILABLE",
+                        "Agent Activity requires the local desktop host",
+                    )
+                })?;
+                host.stop_agent_activity()
+                    .map_err(|error| Fault::new("PROVIDER_STOP_FAILED", error))?;
+                s.agent_activity_state = host.agent_activity_state();
+            }
+            "manager.agent_activity.restart" => {
+                let host = provider_launcher.ok_or_else(|| {
+                    Fault::new(
+                        "NATIVE_UNAVAILABLE",
+                        "Agent Activity requires the local desktop host",
+                    )
+                })?;
+                host.restart_agent_activity(runtime_descriptor)
+                    .map_err(|error| Fault::new("PROVIDER_RESTART_FAILED", error))?;
+                s.agent_activity_state = host.agent_activity_state();
+            }
             "settings.title" => {
                 let value = event
                     .value
@@ -1118,7 +1184,8 @@ impl ManagerProvider {
             ),
             node("worlds-line", Kind::Divider, json!({}), vec![]),
         ];
-        rows.insert(3, self.pack_controls(hub, settings, &locale)?);
+        rows.insert(4, self.pack_controls(hub, settings, &locale)?);
+        rows.insert(4, self.agent_activity_controls(settings, &locale));
         for w in summaries.into_iter().filter(|w| !w.system) {
             let id = w.id.to_string();
             let snap = hub.renderer_snapshot(w.id)?;
@@ -1182,6 +1249,77 @@ impl ManagerProvider {
             hub.dispatch(self.session,"scene.replace",json!({"world_id":self.world_id,"lease":self.lease,"expected_revision":snapshot.revision,"scene":scene}))?;
         }
         Ok(())
+    }
+    fn agent_activity_controls(&self, settings: &Settings, locale: &str) -> Node {
+        let state_label = manager_text(
+            locale,
+            match settings.agent_activity_state {
+                ManagedAppState::Unavailable => "manager.agent_activity.unavailable",
+                ManagedAppState::Stopped => "manager.agent_activity.stopped",
+                ManagedAppState::Starting => "manager.agent_activity.starting",
+                ManagedAppState::Running => "manager.agent_activity.running",
+                ManagedAppState::Stopping => "manager.agent_activity.stopping",
+                ManagedAppState::Failed => "manager.agent_activity.failed",
+            },
+        );
+        let running = settings.agent_activity_state == ManagedAppState::Running;
+        let busy = matches!(
+            settings.agent_activity_state,
+            ManagedAppState::Starting | ManagedAppState::Stopping
+        );
+        node(
+            "agent-activity-controls",
+            Kind::Stack,
+            json!({"gap":8}),
+            vec![
+                node(
+                    "agent-activity-title",
+                    Kind::Text,
+                    json!({"text":manager_text(locale,"manager.agent_activity.title"),"size":"heading"}),
+                    vec![],
+                ),
+                node(
+                    "agent-activity-description",
+                    Kind::Text,
+                    json!({"text":manager_text(locale,"manager.agent_activity.description"),"tone":"muted"}),
+                    vec![],
+                ),
+                node(
+                    "agent-activity-status",
+                    Kind::Badge,
+                    json!({"text":state_label,"tone":if running {"success"} else {"muted"}}),
+                    vec![],
+                ),
+                node(
+                    "agent-activity-actions",
+                    Kind::Row,
+                    json!({"gap":8}),
+                    vec![
+                        node(
+                            "agent-activity-start",
+                            Kind::Button,
+                            json!({
+                                "label":manager_text(locale,if running {"manager.agent_activity.restart"} else {"manager.agent_activity.start"}),
+                                "action":if running {"manager.agent_activity.restart"} else {"manager.agent_activity.start"},
+                                "tone":"accent",
+                                "disabled":busy || settings.agent_activity_state == ManagedAppState::Unavailable
+                            }),
+                            vec![],
+                        ),
+                        node(
+                            "agent-activity-stop",
+                            Kind::Button,
+                            json!({
+                                "label":manager_text(locale,"manager.agent_activity.stop"),
+                                "action":"manager.agent_activity.stop",
+                                "disabled":busy || !running
+                            }),
+                            vec![],
+                        ),
+                    ],
+                ),
+            ],
+        )
     }
 }
 fn parse_id(action: &str, prefix: &str) -> Result<Uuid> {
@@ -1449,6 +1587,95 @@ mod tests {
             .expect("the final explicit action launches the installed package");
         assert!(!settings.pending_provider_launch);
         assert_eq!(launcher.launches.load(Ordering::SeqCst), 1);
+    }
+
+    #[derive(Default)]
+    struct FakeAgentActivityHost {
+        state: Mutex<ManagedAppState>,
+        starts: AtomicUsize,
+        stops: AtomicUsize,
+    }
+
+    impl ProviderBundleLauncher for FakeAgentActivityHost {
+        fn launch(
+            &self,
+            _bundle: &InstalledProviderBundle,
+            _runtime_descriptor: &Path,
+        ) -> std::result::Result<(), String> {
+            Err("bundle launch is not used in this test".into())
+        }
+
+        fn agent_activity_state(&self) -> ManagedAppState {
+            *self.state.lock().unwrap()
+        }
+
+        fn start_agent_activity(
+            &self,
+            _runtime_descriptor: &Path,
+        ) -> std::result::Result<(), String> {
+            *self.state.lock().unwrap() = ManagedAppState::Running;
+            self.starts.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn stop_agent_activity(&self) -> std::result::Result<(), String> {
+            *self.state.lock().unwrap() = ManagedAppState::Stopped;
+            self.stops.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn manager_agent_activity_start_stop_and_restart_use_the_same_local_host() {
+        let hub = Hub::new(true);
+        let manager = ManagerProvider::install(&hub).expect("manager installs");
+        let host = FakeAgentActivityHost::default();
+        let mut settings = Settings::default();
+        let descriptor = Path::new("C:/synthetic/runtime.json");
+
+        manager
+            .handle_with_hosts(
+                &hub,
+                &mut settings,
+                &action(&manager, "manager.agent_activity.start".into(), Value::Null),
+                None,
+                Some(&host),
+                descriptor,
+            )
+            .expect("manager starts the local app");
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Running);
+        assert_eq!(host.starts.load(Ordering::SeqCst), 1);
+
+        manager
+            .handle_with_hosts(
+                &hub,
+                &mut settings,
+                &action(&manager, "manager.agent_activity.stop".into(), Value::Null),
+                None,
+                Some(&host),
+                descriptor,
+            )
+            .expect("manager stops the local app");
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Stopped);
+        assert_eq!(host.stops.load(Ordering::SeqCst), 1);
+
+        manager
+            .handle_with_hosts(
+                &hub,
+                &mut settings,
+                &action(
+                    &manager,
+                    "manager.agent_activity.restart".into(),
+                    Value::Null,
+                ),
+                None,
+                Some(&host),
+                descriptor,
+            )
+            .expect("manager restarts the local app");
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Running);
+        assert_eq!(host.starts.load(Ordering::SeqCst), 2);
+        assert_eq!(host.stops.load(Ordering::SeqCst), 2);
     }
 
     fn write_import_fixture(permissions: &[&str]) -> PathBuf {

@@ -1347,3 +1347,62 @@ Audit evidence is in ignored `evidence/local/`; it contains no runtime descripto
 | 与权威端的真实回传 | NOT_RUN | 本轮只实现决策卡的状态机与渲染，尚未接入任一真实 Harness 的批准端点。按 B08-04 的实施约束，只对已确认支持的 Harness 建立 approval adapter；在没有权威端契约与明确授权前不猜测端点、不调用批准 API。|
 
 该模块位于 `examples/integrations/agent-board/decisions/`，是纯逻辑与投影层，不新增宿主方法、不打开网络监听、不调用任何外部批准接口。它与 B08-02 的只读总览共用来源身份语义：观察到"等待批准"永远不等于已经获得批准权。
+
+## 2026-11-01 Agent Activity 管理器生命周期与当前 release
+
+**Given** 桌面 Host 正常运行，管理器应能替用户启动本机只读 Agent 总览；**When** 用户从管理器启动、停止或重启该内置 Provider；**Then** Host 使用自己的 runtime descriptor 启动受固定参数约束的 Python 子进程，等待首份场景成功才显示 Running，停止时等待 Provider 清理自己的 world，重启等原进程退出后才创建新进程。会话采集不启动 Codex App 或 Claude Code。
+
+| 检查 | 状态 | 实际结果 |
+|---|---|---|
+| `npm run ui:build` | PASS | 退出码 0；双语管理器 Agent Activity 卡片已构建。|
+| `cargo check -p wincraft-desktop` / `cargo clippy -p wincraft-server -p wincraft-desktop --all-targets -- -D warnings` | PASS | Windows Tauri target 编译通过，Clippy 无 warning。|
+| `cargo test -p wincraft-server` | PASS | 65 项通过，1 项 ignored。新增管理器 start/stop/restart action 回归通过。|
+| `cargo test -p wincraft-desktop managed_agent_activity_child_starts_stops_and_restarts_without_a_shell` | PASS | Windows 测试真实启动临时 Python 子进程，捕捉 readiness、通过 stdin 停止、再重启和停止；全程不经 shell。|
+| `python -m unittest tests.test_agent_live_sources tests.test_agent_global_overview tests.test_unified_inbox -v` | PASS | 56 项通过。覆盖 unknown history count、source file timestamp 与 collector read age 分离、App UUID/输出校验、离线历史及只读权限。|
+| `npm run check:contracts` | PASS | schema、合成正反 fixture、locale 和引用一致。activity draft 升到 `draft-2026-11-01`，可选 `source_updated_at` 只表示本地来源文件更新时间。|
+| `python skills/wincraft-provider/scripts/verify.py` / `cargo fmt --all -- --check` | PASS | Provider 教程 45 个引用存在；Rust 格式检查通过。|
+| `cargo build --release -p wincraft-server --bin wincraft-headless` | PASS | 当前 checkout 的 release headless Rust Host 构建成功。第一次因旧的本 checkout Headless 进程锁住 EXE 失败；按用户授权只停止精确路径匹配的进程后重建成功。|
+| `python scripts/agent_activity_headless_smoke.py` | PASS | 真实 release Rust Host + 用户本机只读 App/Claude Provider；创建世界、读取 2 次快照、收到 stop 后退出码 0 并确认清理。Codex App online、Claude Code offline、逐会话状态 unknown；不打印或保存会话文本、token、descriptor 或 PID，不启动目标 Harness，不作业务写入。|
+| `npm run desktop:build` | PASS | `target/release/wincraft-desktop.exe`，14,402,560 bytes，SHA-256 `A2642924DC770A1B8B6C6E92921D42399A97C5D80379C98F8BEEE9D8F5EA40AB`。本机未签名构建，非安装器或 GitHub Release。|
+| 新构建 Agent Activity Manager 原生按钮 | PARTIAL | `--open-manager` 启动成功且 Computer Use 窗口枚举看见新管理器；新会话中两次 `sky.activate_window` 均返回 `failed to activate captured window`，因此没有 UIA 树、点击/回执截图或托盘验收。本机管理器窗口保持开启，等待用户目视测试。对应 B08-02-A6 保持 PARTIAL。|
+
+本机完整输入记录 [`summary.json`](../../evidence/local/agent-activity-integration-2026-11-01/summary.json) 位于默认忽略目录，只包含汇总状态，不含 descriptor、令牌、日志正文、PID、会话标题或截图。源 checkout 仍需提供 `examples/integrations/agent-board/live_provider.py`；Python/依赖或源码缺失时管理器显示 unavailable。它尚未独立打包成 `wincraft-agent-activity` 应用，管理器按钮也仍需当前新 EXE 上的原生用户点击验收。
+
+## 2026-11-01 日用准备度调查与 Computer Use 恢复
+
+**Given** 用户授权检查当前本机窗口、进程并恢复 Computer Use；**When** 使用当前独立 release、真实 App/Claude 只读 Provider 和 `@oai/sky` 检查日常入口；**Then** 实际观察管理器展开、字号调整、来源切换和会话卡片，并记录仍会影响普通用户日用的语义与生命周期缺口。此次没有修改产品运行时代码、重建 EXE、读取凭据或调用业务写接口。
+
+| 检查 | 状态 | 实际结果 |
+|---|---|---|
+| 环境 / 构建身份 | PASS | Windows 11 Pro `10.0.22000`；Python 3.11.4、Node 22.23.4、rustc 1.93.0、gh 2.83.2；命令退出码均为 0。EXE 14,345,728 bytes，SHA-256 `D5BF7A251ECE376AD48A099A44492A61F225CBE316FEBE5DFC30D5934301FAC2`，最后修改 app/core/server 的提交为 `bf87fd2`。|
+| Computer Use 初始化 / 窗口与 UIA | PASS（本轮） | 导入 `@oai/sky` 后枚举窗口，准确选择并展开已有管理器，成功读取原生截图及 UIA。一处输入遇到 `coordinate input geometry is unavailable`，重新枚举、选择、激活后恢复；没有沿用旧坐标。不是长期稳定性承诺。|
+| 字号快捷键 | PASS（限定管理器） | Ctrl+Shift+Plus 回报 110%；Ctrl+0 回报恢复主题设置。未验证所有输入法、键盘布局或业务窗口。|
+| `python examples/integrations/agent-board/live_provider.py --runtime <管理器选定路径> --sources codex-app claude-code --duration-seconds 240 --refresh-seconds 15 --title <本轮临时标题>` | PASS（真实 release 与真实本机只读来源） | 退出码 0，16 份聚合快照；Codex App online、Claude Code offline，二者均读取有界 128 条、逐会话 unknown。本次不查询 Codex CLI，不启动 Harness。Provider 确认清理自己的世界，管理器回到 0 个业务世界。|
+| 原生来源切换、卡片和读取年龄 | PASS（已观察范围） / PARTIAL（需求整体） | 点击 App 来源页实际变更内容并显示操作已确认；当前项目会话名称和项目可见，其他部分卡片有来源 Agent 输出，进程/数据健康/最近读取年龄可见。当前项目输出仍缺失，线程深链未点击，stale/failure 故障注入未执行。B08-02-A4 从 STALLED 改为 PARTIAL，A5 保持 PARTIAL。|
+| 复制路径 / 提供者代码包 | PARTIAL / NOT_RUN | 复制按钮收到普通动作确认，但未读取或核对系统剪贴板内容。只尝试输入合成代码包路径，未完成预览、安装或启动；临时字段已清空并提交恢复。不能把这些尝试算作 W28 或配置包导入通过。|
+| 原生可用性发现 | OPEN | 整个 frame 的 opacity 令文字也透明；离线历史计数仍标为后台 Agent；读取年龄容易被误解为来源更新时间；未选来源仍占主总览。Alt+滚轮入口、可恢复应用库和完整单实例行为未实现。|
+| CI 与发布清单 | PASS（只读核对） | `gh run list` 返回最新 `43b804b` 的 [run 41226574451](https://github.com/exomind-team/WinCraft/actions/runs/41226574451) success，前四个 run 也 success；`gh release list` 返回空。没有提交、推送或发布。|
+| 其余原生门 | NOT_RUN | 托盘全局显隐/退出、穿透救援、独立重启、DPI/多屏、休眠、原生中文输入和外部来源导航未在本轮执行。|
+
+## 2026-11-01 Agent Activity manager 生命周期与当前 release
+
+**Given** 用户要从世界管理器使用 Agent Activity，**When** 在当前 checkout 中构建 Tauri Host 并由 Host 启动本机只读 Provider，**Then** Host 使用自己的 runtime descriptor 启动 Python 子进程；Provider 完成首份场景后显示 Running；停止请求先清理 Provider 自己的 world；重启等旧子进程退出后才启动一个新进程。
+
+| 检查 | 状态 | 实际结果 |
+|---|---|---|
+| `npm run ui:build` | PASS | 双语管理器 Agent Activity 控件编译通过。|
+| `cargo check -p wincraft-desktop` | PASS | Windows Tauri target 编译通过。|
+| `cargo clippy -p wincraft-server -p wincraft-desktop --all-targets -- -D warnings` | PASS | strict Clippy 无 warning。|
+| `cargo fmt --all -- --check` | PASS | Rust 格式检查通过。|
+| `cargo test -p wincraft-server` | PASS | 65 项通过，1 项 ignored；含管理器 start/stop/restart 路由测试。|
+| `cargo test -p wincraft-desktop managed_agent_activity_child_starts_stops_and_restarts_without_a_shell` | PASS | 1 项 Windows 测试真实启动临时 Python 子进程、等待 ready marker、stdin stop、正常退出、重启并再次停止。|
+| `python -m unittest tests.test_agent_live_sources tests.test_agent_global_overview tests.test_unified_inbox -v` | PASS | 56 项通过，含历史条目/活跃状态分离、读取时间/来源记录更新时间、最近输出和脱敏。|
+| `npm run check:contracts` / Provider Skill verifier | PASS | 合同检查 PASS，Provider Skill 45 个引用通过。|
+| `cargo build --release -p wincraft-server --bin wincraft-headless` | PASS | 当前 checkout release Headless Host 构建成功；第一次失败因精确路径的旧本项目进程占用，按既有授权停止后重建通过。|
+| `python scripts/agent_activity_headless_smoke.py` | PASS | 当前 release Rust Host 接受真实 App/Claude 只读 Provider，提供者建立世界并提交 2 份聚合快照，收到 stop 后清理自己的 world 并以 0 退出。Codex App online、Claude Code offline、逐会话状态 unknown。未启动目标 Harness、未作业务写入、未保存会话正文。|
+| `npm run desktop:build` | PASS | `target/release/wincraft-desktop.exe`，14,402,560 bytes；SHA-256 `A2642924DC770A1B8B6C6E92921D42399A97C5D80379C98F8BEEE9D8F5EA40AB`。基线 `43b804b` + 未提交工作区；未签名且没有 Release。|
+| 新构建管理器原生按钮 | PARTIAL | 使用 `--open-manager` 启动并枚举到窗口，但 Computer Use 两次返回 `failed to activate captured window`，管理器按钮点击、卡片像素和托盘用例未完成；对应 B08-02-A6 为 PARTIAL。|
+
+双语使用入口见[中文指南](../../examples/integrations/agent-board/README.zh-CN.md)和[English guide](../../examples/integrations/agent-board/README.md)。Provider 源目前仍需 checkout 中的示例目录；独立 `wincraft-agent-activity` 包尚未交付。脱敏汇总见忽略目录 [`summary.json`](../../evidence/local/agent-activity-integration-2026-11-01/summary.json)。本轮未提交、未推送、未发布。
+
+日用差距、用户叙事及建议顺序见[中文调查](../product/DAILY_USE_READINESS.zh-CN.md)和[English assessment](../product/DAILY_USE_READINESS.en-US.md)。机器本地汇总在忽略的 `evidence/local/daily-use-audit-2026-11-01/summary.json`；没有保存截图、会话文本/标题清单、PID、descriptor 路径或凭据。历史章节里的旧构建和 Computer Use 失败仍是其当时记录，不能作为当前状态。

@@ -6,6 +6,8 @@
 
 ## 给人的最短阅读路径
 
+想了解普通用户如何用上、哪些日用环节尚未打通，先看[日用准备度调查（2026-11-01）](docs/product/DAILY_USE_READINESS.zh-CN.md)。当前构建信息以更新后的中文验收指南为准。
+
 1. `README.md`：产品与交付边界。
 2. `docs/product/DECISIONS.md`：哪些是用户决定，哪些只是本轮实施取舍。
 3. `docs/engineering/VALIDATION.md`：已执行/未执行的真实状态。

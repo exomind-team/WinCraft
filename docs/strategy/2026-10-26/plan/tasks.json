@@ -2120,6 +2120,11 @@
         {
           "id": "B08-02-A5",
           "criterion": "每个来源显示最近成功读取年龄及 stale/disconnected 边界；没有权威逐会话状态时显示 unknown，不将 source process online 等同所有会话 active。"
+        },
+        {
+          "id": "B08-02-A6",
+          "criterion": "世界管理器可以一键启动、停止和重启内置 Agent Activity；状态反映真实子进程与首个场景就绪，停止会先请求 Provider 清理自己的世界，重启等旧子进程退出后启动唯一新实例，不要求用户复制 descriptor 或运行命令。",
+          "level": "L1-L5"
         }
       ],
       "verification_level": "L2-L5",

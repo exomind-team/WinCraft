@@ -200,6 +200,28 @@ class GlobalOverviewSceneTests(unittest.TestCase):
             '进程状态不可用',
         )
 
+    def test_history_count_and_source_file_time_are_distinct_from_read_time(self):
+        projection = copy.deepcopy(self.projection)
+        projection['data_mode_label'] = '本机进程与文件实时只读'
+        projection['source_health'] = {'codex': 'not_requested', 'codex-app': 'online', 'claude-code': 'offline'}
+        projection['source_data_health'] = {'codex-app': 'partial', 'claude-code': 'partial'}
+        projection['source_age_seconds'] = {'codex-app': 2, 'claude-code': 4}
+        projection['source_freshness'] = {'codex-app': 'fresh', 'claude-code': 'fresh'}
+        projection['source_updated_at'] = {'codex-app': '2026-10-29T09:55:00Z', 'claude-code': '2026-10-29T09:54:00Z'}
+        for session in projection['sessions']:
+            if session['source_type_label'] in {'Codex App', 'Claude Code'}:
+                session['normalized_status'] = 'unknown'
+                session['status_label'] = '状态未知'
+                session['source_updated_at'] = '2026-10-29T09:54:00Z'
+
+        scene, _, _ = build_global_overview_scene(projection, GlobalOverviewState())
+        encoded = json.dumps(scene, ensure_ascii=False)
+        self.assertIn('可读历史记录', scene['data']['summary']['claude_metric_label'])
+        self.assertNotIn('后台 Agent', encoded)
+        self.assertIn('最近读取：2 秒前', encoded)
+        self.assertIn('来源记录更新：', encoded)
+        self.assertIn('状态未知', encoded)
+
     def test_codex_app_preview_binds_name_status_project_output_and_uuid_link(self):
         projection = copy.deepcopy(self.projection)
         projection['data_mode_label'] = '本机进程与文件实时只读'

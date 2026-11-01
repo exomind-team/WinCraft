@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-01",
+  "updated_at": "2026-11-02",
   "cases": [
     {
       "id": "B00-01-A1",
@@ -1444,8 +1444,8 @@
       ],
       "level": "L2-L5",
       "criterion": "Codex App 与 Codex CLI 保持独立来源；Codex App 从本机状态库/经 UUID 校验的 rollout 显示标题、项目、最近 Agent 输出和诚实状态，标题点击只使用受限 UUID-only 原生线程导航。",
-      "status": "STALLED",
-      "evidence": "STALLED by user request at the 2026-10-30 stage checkpoint. Standard-release real snapshots and the synthetic scene regression verify the title, status, project, recent Agent output, and capability-gated UUID-only action in the scene contract; pixel-level Agent Activity cards, an actual title click, and target conversation loading remain NOT_RUN because the Computer Use native pipe is unavailable. The broader B08-02 task remains IN_PROGRESS."
+      "status": "PARTIAL",
+      "evidence": "2026-11-01 current release native observation: a 240-second real App/Claude local-source run produced 16 snapshots and cleaned its own world. The current project session name/project and some other cards Agent output were visible; native source switching received an ACK. Current-project output was missing. UUID-only thread navigation was not clicked. The earlier Computer Use STALLED condition is cleared; the full criterion remains PARTIAL. No raw session text, screenshots or identities were saved."
     },
     {
       "id": "B08-02-A5",
@@ -1459,7 +1459,21 @@
       "level": "L2-L5",
       "criterion": "每个来源显示最近成功读取年龄及 stale/disconnected 边界；没有权威逐会话状态时显示 unknown，不将 source process online 等同所有会话 active。",
       "status": "PARTIAL",
-      "evidence": "PARTIAL: local smoke returns separate process health, data health and last-read age; three live Host snapshots succeeded. The absence of authoritative per-session state remains unknown in focused tests; visible freshness labels in the current release remain NOT_RUN. Current 2026-10-31 standard Tauri release L2 recheck submitted three snapshots over 11 seconds: Codex CLI online/0 listed statuses, Codex App online/128 unknown statuses, Claude Code offline/128 unknown historical statuses; the provider cleaned its temporary world and did not start Harness processes or persist session text. A5 remains PARTIAL because freshness pixels were not observed. Evidence: evidence/local/nextgen-2026-10-31/b08-02-a5-live-source-snapshot.json."
+      "evidence": "PARTIAL: 2026-11-01 current release UIA/screenshots showed App process online, Claude process offline with history, partial-read labels, last-read age, and unknown per-session status. Sixteen real read-only snapshots over 240 seconds succeeded without starting a Harness; Provider exit 0 and own-world cleanup confirmed. Stale/disconnect failure injection remains NOT_RUN. Offline history is still labelled background Agents, and read age is not source event age; retain these semantic gaps instead of claiming complete freshness acceptance."
+    },
+    {
+      "id": "B08-02-A6",
+      "task_id": "B08-02",
+      "requirement_ids": [
+        "R023",
+        "R024",
+        "R071",
+        "R074"
+      ],
+      "level": "L1-L5",
+      "criterion": "世界管理器可以一键启动、停止和重启内置 Agent Activity；状态反映真实子进程与首个场景就绪，停止会先请求 Provider 清理自己的世界，重启等旧子进程退出后启动唯一新实例，不要求用户复制 descriptor 或运行命令。",
+      "status": "PARTIAL",
+      "evidence": "Windows action routing is covered by the Rust manager regression. The current desktop release also passed a real shell-free managed Python child start/ready/stop/restart test. A separate release-headless smoke used the actual read-only App/Claude Provider, completed two snapshots, received stop, cleaned its own world and exited 0. The built Tauri Manager was launched and enumerated; Computer Use activation failed twice with failed to activate captured window, so the Manager buttons were not clicked. Native criterion remains PARTIAL."
     },
     {
       "id": "B08-03-A1",

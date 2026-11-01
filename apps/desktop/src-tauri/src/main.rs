@@ -4,10 +4,16 @@ use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::{BufRead, BufReader, Write},
     net::SocketAddr,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    process::{Child, ChildStdin, Command, Stdio},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+    time::{Duration, Instant},
 };
 use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -20,7 +26,7 @@ use wincraft_server::{
     provider_package::{
         verify_installed_provider_entrypoint, InstalledProviderBundle, ProviderRuntime,
     },
-    self_provider::{ManagerProvider, ProviderBundleLauncher, ShortcutHost},
+    self_provider::{ManagedAppState, ManagerProvider, ProviderBundleLauncher, ShortcutHost},
     Hub, RunningServer,
 };
 
@@ -44,13 +50,46 @@ struct TauriShortcutHost {
 struct TauriProviderBundleLauncher {
     provider_store: PathBuf,
     processes: Mutex<BTreeMap<String, Child>>,
+    agent_activity: Mutex<ManagedAgentActivity>,
+}
+
+struct ManagedAgentActivity {
+    provider_script: Option<PathBuf>,
+    python: Option<PathBuf>,
+    child: Option<Child>,
+    stdin: Option<ChildStdin>,
+    ready: Arc<AtomicBool>,
+    state: ManagedAppState,
 }
 
 impl TauriProviderBundleLauncher {
-    fn new(provider_store: PathBuf) -> Self {
+    fn new(provider_store: PathBuf, provider_script: Option<PathBuf>) -> Self {
+        let python = resolve_runtime_executable("python.exe").ok();
+        let dependencies_ready = python.as_ref().is_some_and(|python| {
+            Command::new(python)
+                .args(["-c", "import websockets, jsonschema"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        });
+        let state = if provider_script.is_some() && dependencies_ready {
+            ManagedAppState::Stopped
+        } else {
+            ManagedAppState::Unavailable
+        };
         Self {
             provider_store,
             processes: Mutex::new(BTreeMap::new()),
+            agent_activity: Mutex::new(ManagedAgentActivity {
+                provider_script,
+                python: dependencies_ready.then_some(python).flatten(),
+                child: None,
+                stdin: None,
+                ready: Arc::new(AtomicBool::new(false)),
+                state,
+            }),
         }
     }
 
@@ -63,10 +102,231 @@ impl TauriProviderBundleLauncher {
             let _ = child.kill();
             let _ = child.wait();
         }
+        drop(processes);
+        let _ = self.stop_agent_activity();
+    }
+
+    fn stop_agent_activity(&self) -> std::result::Result<(), String> {
+        let mut managed = self
+            .agent_activity
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if managed.child.is_none() {
+            if managed.state != ManagedAppState::Unavailable {
+                managed.state = ManagedAppState::Stopped;
+            }
+            return Ok(());
+        }
+        managed.state = ManagedAppState::Stopping;
+        if let Some(mut stdin) = managed.stdin.take() {
+            stdin
+                .write_all(b"stop\n")
+                .map_err(|_| "could not signal Agent Activity to stop".to_owned())?;
+            stdin
+                .flush()
+                .map_err(|_| "could not flush Agent Activity stop request".to_owned())?;
+        }
+        let deadline = Instant::now() + Duration::from_secs(8);
+        loop {
+            let child_status = managed
+                .child
+                .as_mut()
+                .expect("Agent Activity child remains registered while stopping")
+                .try_wait();
+            match child_status {
+                Ok(Some(status)) if status.success() => {
+                    managed.child = None;
+                    managed.state = ManagedAppState::Stopped;
+                    return Ok(());
+                }
+                Ok(Some(_)) => {
+                    managed.child = None;
+                    managed.state = ManagedAppState::Failed;
+                    return Err("Agent Activity exited before confirming cleanup".into());
+                }
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(100)),
+                Ok(None) => {
+                    if let Some(child) = managed.child.as_mut() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                    managed.child = None;
+                    managed.state = ManagedAppState::Failed;
+                    return Err("Agent Activity did not stop cleanly within 8 seconds; Host ended the child process".into());
+                }
+                Err(_) => {
+                    managed.state = ManagedAppState::Failed;
+                    return Err("could not observe Agent Activity process state".into());
+                }
+            }
+        }
+    }
+
+    fn start_agent_activity(&self, runtime_descriptor: &Path) -> std::result::Result<(), String> {
+        let mut managed = self
+            .agent_activity
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if managed.state == ManagedAppState::Unavailable {
+            return Err(
+                "Agent Activity provider or its Python dependencies are unavailable".into(),
+            );
+        }
+        if let Some(child) = managed.child.as_mut() {
+            match child
+                .try_wait()
+                .map_err(|_| "could not observe the existing Agent Activity process".to_owned())?
+            {
+                None => return Err("Agent Activity is already running".into()),
+                Some(_) => managed.child = None,
+            }
+        }
+        let metadata = fs::symlink_metadata(runtime_descriptor)
+            .map_err(|_| "Host connection descriptor is unavailable".to_owned())?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Host connection descriptor is not a regular local file".into());
+        }
+        let descriptor = runtime_descriptor
+            .canonicalize()
+            .map_err(|_| "Host connection descriptor could not be resolved".to_owned())?;
+        let provider_script = managed.provider_script.as_ref().ok_or_else(|| {
+            "Agent Activity provider source is unavailable in this installation".to_owned()
+        })?;
+        let python = managed
+            .python
+            .as_ref()
+            .ok_or_else(|| "Python is not available to this Host".to_owned())?;
+        let script = provider_script
+            .canonicalize()
+            .map_err(|_| "Agent Activity provider source could not be resolved".to_owned())?;
+        let working_directory = script
+            .parent()
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .ok_or_else(|| "Agent Activity provider location is invalid".to_owned())?;
+        let ready = Arc::new(AtomicBool::new(false));
+        let mut command = Command::new(python);
+        command
+            .args([
+                "-u",
+                script
+                    .to_str()
+                    .ok_or_else(|| "Agent Activity provider path is invalid".to_owned())?,
+                "--runtime",
+                descriptor
+                    .to_str()
+                    .ok_or_else(|| "Host descriptor path is invalid".to_owned())?,
+                "--until-stopped",
+                "--refresh-seconds",
+                "15",
+                "--sources",
+                "codex",
+                "codex-app",
+                "claude-code",
+                "--title",
+                "Agent Activity · 全局纵览",
+            ])
+            .current_dir(working_directory)
+            .env_clear()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        for name in [
+            "PATH",
+            "SYSTEMROOT",
+            "WINDIR",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "TEMP",
+            "TMP",
+            "CODEX_HOME",
+            "CLAUDE_CONFIG_DIR",
+        ] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        let mut child = command
+            .spawn()
+            .map_err(|_| "Agent Activity process could not start".to_owned())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Agent Activity status stream is unavailable".to_owned())?;
+        let ready_signal = ready.clone();
+        thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if line.contains("\"event\":\"agent-activity-ready\"") {
+                    ready_signal.store(true, Ordering::Release);
+                }
+            }
+        });
+        managed.stdin = child.stdin.take();
+        managed.child = Some(child);
+        managed.ready = ready;
+        managed.state = ManagedAppState::Starting;
+        Ok(())
     }
 }
 
+fn find_agent_activity_provider() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    executable
+        .ancestors()
+        .map(|directory| directory.join("examples/integrations/agent-board/live_provider.py"))
+        .find(|candidate| candidate.is_file())
+}
+
 impl ProviderBundleLauncher for TauriProviderBundleLauncher {
+    fn agent_activity_state(&self) -> ManagedAppState {
+        let mut managed = self
+            .agent_activity
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let process_status = managed.child.as_mut().map(Child::try_wait);
+        match process_status {
+            None if managed.state != ManagedAppState::Unavailable => {
+                managed.state = ManagedAppState::Stopped
+            }
+            None => {}
+            Some(Ok(Some(status))) => {
+                managed.child = None;
+                managed.stdin = None;
+                managed.state = if status.success() {
+                    ManagedAppState::Stopped
+                } else {
+                    ManagedAppState::Failed
+                };
+            }
+            Some(Ok(None)) if managed.ready.load(Ordering::Acquire) => {
+                managed.state = ManagedAppState::Running
+            }
+            Some(Ok(None)) => managed.state = ManagedAppState::Starting,
+            Some(Err(_)) => managed.state = ManagedAppState::Failed,
+        }
+        managed.state
+    }
+
+    fn start_agent_activity(&self, runtime_descriptor: &Path) -> std::result::Result<(), String> {
+        TauriProviderBundleLauncher::start_agent_activity(self, runtime_descriptor)
+    }
+
+    fn stop_agent_activity(&self) -> std::result::Result<(), String> {
+        TauriProviderBundleLauncher::stop_agent_activity(self)
+    }
+
+    fn restart_agent_activity(&self, runtime_descriptor: &Path) -> std::result::Result<(), String> {
+        TauriProviderBundleLauncher::stop_agent_activity(self)?;
+        TauriProviderBundleLauncher::start_agent_activity(self, runtime_descriptor)
+    }
+
     fn launch(
         &self,
         bundle: &InstalledProviderBundle,
@@ -743,8 +1003,10 @@ fn main() {
                 Ok::<_, std::io::Error>((server, manager))
             })?;
             let descriptor_path = server.file.to_string_lossy().into_owned();
-            let provider_launcher =
-                Arc::new(TauriProviderBundleLauncher::new(provider_store.clone()));
+            let provider_launcher = Arc::new(TauriProviderBundleLauncher::new(
+                provider_store.clone(),
+                find_agent_activity_provider(),
+            ));
             app.manage(DesktopState {
                 hub: hub.clone(),
                 manager: manager.clone(),
@@ -808,7 +1070,17 @@ fn main() {
 
 #[cfg(test)]
 mod platform_capability_tests {
-    use super::EXTERNAL_WINDOW_ACTIONS_AVAILABLE;
+    use super::{
+        ManagedAppState, ProviderBundleLauncher, TauriProviderBundleLauncher,
+        EXTERNAL_WINDOW_ACTIONS_AVAILABLE,
+    };
+    use std::{
+        fs,
+        path::PathBuf,
+        thread,
+        time::{Duration, Instant},
+    };
+    use uuid::Uuid;
     use wincraft_server::Hub;
 
     #[test]
@@ -833,5 +1105,59 @@ mod platform_capability_tests {
                 .any(|feature| feature == "codex_thread_navigation"),
             cfg!(windows)
         );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn managed_agent_activity_child_starts_stops_and_restarts_without_a_shell() {
+        let root = std::env::temp_dir().join(format!("wincraft-managed-app-{}", Uuid::new_v4()));
+        let script_dir = root.join("examples/integrations/agent-board");
+        fs::create_dir_all(&script_dir).expect("temporary provider directory is created");
+        let _cleanup = TemporaryDirectory(root.clone());
+        let script = script_dir.join("live_provider.py");
+        fs::write(
+            &script,
+            "import json, sys\nprint('{\"event\":\"agent-activity-ready\"}', flush=True)\nfor line in sys.stdin:\n    if line.strip() == 'stop':\n        break\n",
+        )
+        .expect("synthetic lifecycle provider is written");
+        let descriptor = root.join("synthetic.runtime.json");
+        fs::write(&descriptor, "{}\n").expect("synthetic descriptor path exists");
+        let host = TauriProviderBundleLauncher::new(root.join("provider-store"), Some(script));
+
+        host.start_agent_activity(&descriptor)
+            .expect("first start succeeds");
+        wait_until_running(&host);
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Running);
+        host.stop_agent_activity()
+            .expect("provider receives a stop request");
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Stopped);
+
+        host.restart_agent_activity(&descriptor)
+            .expect("restart waits, then starts a fresh child");
+        wait_until_running(&host);
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Running);
+        host.stop_agent_activity()
+            .expect("restarted provider cleans up");
+        assert_eq!(host.agent_activity_state(), ManagedAppState::Stopped);
+    }
+
+    #[cfg(windows)]
+    fn wait_until_running(host: &TauriProviderBundleLauncher) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if host.agent_activity_state() == ManagedAppState::Running {
+                return;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        panic!("managed Provider did not signal its first ready snapshot");
+    }
+
+    struct TemporaryDirectory(PathBuf);
+
+    impl Drop for TemporaryDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
     }
 }

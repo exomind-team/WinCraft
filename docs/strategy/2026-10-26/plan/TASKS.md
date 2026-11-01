@@ -2,7 +2,7 @@
 {
   "doc_id": "plan__TASKS",
   "title": "实施任务与可验收交付（生成视图）",
-  "updated_at": "2026-11-01",
+  "updated_at": "2026-11-02",
   "last_verified_at": "2026-10-26",
   "baseline_commit": "6929056700b1ba6702288534579debc8a502c139",
   "protocol_baseline": "0.3",
@@ -1171,6 +1171,7 @@ cargo test --workspace
 - **B08-02-A3** 进程不存在但本地历史可读时来源为 offline 且历史仍显示；进程状态、数据可读性和读取新鲜度分别呈现，单源读取失败只影响该来源。
 - **B08-02-A4** Codex App 与 Codex CLI 保持独立来源；Codex App 从本机状态库/经 UUID 校验的 rollout 显示标题、项目、最近 Agent 输出和诚实状态，标题点击只使用受限 UUID-only 原生线程导航。
 - **B08-02-A5** 每个来源显示最近成功读取年龄及 stale/disconnected 边界；没有权威逐会话状态时显示 unknown，不将 source process online 等同所有会话 active。
+- **B08-02-A6** 世界管理器可以一键启动、停止和重启内置 Agent Activity；状态反映真实子进程与首个场景就绪，停止会先请求 Provider 清理自己的世界，重启等旧子进程退出后启动唯一新实例，不要求用户复制 descriptor 或运行命令。
 
 **验证层/目录：** L2-L5 / current WinCraft checkout
 

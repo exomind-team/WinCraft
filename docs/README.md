@@ -4,6 +4,7 @@
 |---|---|
 | 概念研发与隐喻边界 | [concept.md](concept.md) |
 | 用户决定和实施取舍 | [product/DECISIONS.md](product/DECISIONS.md) |
+| 距离独立日用的差距、现场核对与建议顺序 | [中文](product/DAILY_USE_READINESS.zh-CN.md)、[English](product/DAILY_USE_READINESS.en-US.md) |
 | 产品范围和故事验收 | [product/PRD.md](product/PRD.md) |
 | 界面与异常体验 | [product/UX.md](product/UX.md) |
 | 分层和不变量 | [architecture.md](architecture.md) |
@@ -35,7 +36,7 @@
 | `.wcp` 提供者代码包与明确启动确认（中文） | [provider-bundles.zh-CN.md](provider-bundles.zh-CN.md) |
 | `.wcp` Provider code bundles (English) | [provider-bundles.en-US.md](provider-bundles.en-US.md) |
 | 配置包新机器/来源状态边界 | [configuration-pack-status.md](integrations/configuration-pack-status.md)、[configuration-pack-new-machine.md](integrations/configuration-pack-new-machine.md) |
-| Agent Activity 三来源只读总览示例 | [examples/integrations/agent-board/README.md](../examples/integrations/agent-board/README.md) |
+| Agent Activity 三来源只读总览与管理器一键生命周期 | [中文](../examples/integrations/agent-board/README.zh-CN.md)、[English](../examples/integrations/agent-board/README.md) |
 | Codex rollout、DeepSeek 与 MiniMax 本机额度 HUD（中文） | [examples/integrations/model_quota/README.zh-CN.md](../examples/integrations/model_quota/README.zh-CN.md) |
 | Model quota HUD (English) | [examples/integrations/model_quota/README.md](../examples/integrations/model_quota/README.md) |
 | 宿主原生窗口动作 allowlist | [references/native-window-actions.md](../skills/wincraft-provider/references/native-window-actions.md) |
